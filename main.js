@@ -3,7 +3,7 @@ import { extractLocationData, extractFarmSize, extractCropType, extractSowingDat
 
 async function validateAnswerWithLLM(question, answer) {
   try {
-    const response = await fetch('https://llmbackend-ncgh.onrender.com/api/ask-llm', {
+    const response = await fetch('https://llmbackend1.vercel.app/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
