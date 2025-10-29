@@ -1,6 +1,25 @@
 import './style.css'
 import { extractLocationData, extractFarmSize, extractCropType, extractSowingDate } from './dataExtractor.js'
 
+async function validateAnswerWithLLM(question, answer) {
+  try {
+    const response = await fetch('https://llmbackend-ncgh.onrender.com/api/ask-llm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: `Question: "${question}"\nUser Answer: "${answer}"\nDoes the answer make logical sense for this question? Reply only 'Yes' or 'No'.`,
+        validation: true
+      })
+    });
+    const data = await response.json();
+    return data.valid;
+  } catch (error) {
+    console.error('LLM validation error:', error);
+    return true; // fallback to avoid blocking
+  }
+}
+
+
 const translations = {
   english: {
     greeting: "Hello! What's the location of your farm? Please mention the district and state.",
@@ -196,65 +215,63 @@ async function handleUserResponse(response) {
   addUserMessage(response);
   messageInput.value = '';
 
-  let isValid = true; // 🧠 assume valid unless proven otherwise
+  let isValid = true;
+  let currentQuestion = '';
 
   switch (questionIndex) {
     case 0:
+      currentQuestion = currentLanguage.greeting;
       const locationData = extractLocationData(response);
-      if (!locationData.district || !locationData.state) {
-        addBotMessage("I couldn’t catch your district and state. Could you please mention both clearly?");
+      isValid = await validateAnswerWithLLM(currentQuestion, response);
+      if (!locationData.district || !locationData.state || !isValid) {
+        addBotMessage("I couldn’t identify a valid district and state. Could you please mention both clearly?");
         speakMessage("Please say or type your district and state again.", currentLanguage.lang);
-        isValid = false;
-      } else {
-        collectedData.district = locationData.district;
-        collectedData.state = locationData.state;
-        console.log('Extracted location:', locationData);
+        return;
       }
+      collectedData.district = locationData.district;
+      collectedData.state = locationData.state;
       break;
 
     case 1:
+      currentQuestion = currentLanguage.q2;
       const farmSize = extractFarmSize(response);
-      if (!farmSize || isNaN(farmSize) || farmSize <= 0) {
-        addBotMessage("Hmm, that doesn’t seem like a valid number of acres. Could you please repeat it?");
+      isValid = farmSize && !isNaN(farmSize) && farmSize > 0;
+      if (!isValid) {
+        addBotMessage("That doesn’t seem like a valid farm size. Please say the number of acres again.");
         speakMessage("Please say or type your farm size in acres again.", currentLanguage.lang);
-        isValid = false;
-      } else {
-        collectedData.farm_size_acres = farmSize;
-        console.log('Extracted farm size:', farmSize);
+        return;
       }
+      collectedData.farm_size_acres = farmSize;
       break;
 
     case 2:
+      currentQuestion = currentLanguage.q3;
+      isValid = await validateAnswerWithLLM(currentQuestion, response);
       const cropType = extractCropType(response);
-      if (!cropType || cropType.length < 2) {
-        addBotMessage("I didn’t recognize that crop type. Could you please name your crop again?");
-        speakMessage("Please say your crop type again.", currentLanguage.lang);
-        isValid = false;
-      } else {
-        collectedData.crop_type = cropType;
-        console.log('Extracted crop type:', cropType);
+      if (!isValid || !cropType || cropType.length < 2) {
+        addBotMessage("That doesn’t seem like a valid crop name. Please name your crop again.");
+        speakMessage("Please say your crop name again.", currentLanguage.lang);
+        return;
       }
+      collectedData.crop_type = cropType;
       break;
 
     case 3:
+      currentQuestion = currentLanguage.q4;
+      isValid = await validateAnswerWithLLM(currentQuestion, response);
       const sowingDate = extractSowingDate(response);
-      if (!sowingDate) {
-        addBotMessage("I couldn’t understand your sowing date. Could you please mention it again?");
+      if (!isValid || !sowingDate) {
+        addBotMessage("I couldn’t understand the date you mentioned. Please say your sowing date again.");
         speakMessage("Please say or type your sowing date again.", currentLanguage.lang);
-        isValid = false;
-      } else {
-        collectedData.sowing_date = sowingDate;
-        console.log('Extracted sowing date:', sowingDate);
+        return;
       }
+      collectedData.sowing_date = sowingDate;
       break;
   }
 
-  // ❌ If invalid, don't move forward
-  if (!isValid) return;
-
-  // ✅ If valid, go to the next question
   questionIndex++;
 
+  // Continue as before
   setTimeout(() => {
     let nextMessage = '';
 
@@ -274,10 +291,9 @@ async function handleUserResponse(response) {
         messageInput.disabled = true;
         micButton.disabled = true;
 
-        console.log('=== Final Collected Data for ML Model ===');
+        console.log('=== Final Collected Data ===');
         console.log(JSON.stringify(collectedData, null, 2));
 
-        // 🧠 Show JSON + call backend LLM
         setTimeout(async () => {
           const formattedJSON = JSON.stringify(collectedData, null, 2);
           addBotMessage(`<pre>${formattedJSON}</pre>`);
@@ -287,15 +303,13 @@ async function handleUserResponse(response) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                prompt: `Here is the collected farm data:\n${formattedJSON}\nProvide agricultural insights or recommendations based on this information.`
+                prompt: `Here is the collected farm data:\n${formattedJSON}\nProvide agricultural insights based on this information.`
               })
             });
-
             const result = await response.json();
             const llmText = Array.isArray(result)
               ? result[0].generated_text
               : JSON.stringify(result, null, 2);
-
             addBotMessage(`<strong>AI Insights:</strong><br>${llmText}`);
           } catch (err) {
             console.error('LLM request failed:', err);
