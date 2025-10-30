@@ -294,35 +294,48 @@ async function handleUserResponse(response) {
         console.log('=== Final Collected Data ===');
         console.log(JSON.stringify(collectedData, null, 2));
 
-        setTimeout(async () => {
-          const formattedJSON = JSON.stringify(collectedData, null, 2);
-          addBotMessage(`<pre>${formattedJSON}</pre>`);
+  // Convert collected data to query params
+        const queryString = new URLSearchParams(collectedData).toString();
 
-          try {
-            const response = await fetch('https://llmbackend-ncgh.onrender.com/api/ask-llm', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                prompt: `Here is the collected farm data:\n${formattedJSON}\nProvide agricultural insights based on this information.`
-              })
-            });
-            const result = await response.json();
-            const llmText = Array.isArray(result)
-              ? result[0].generated_text
-              : JSON.stringify(result, null, 2);
-            addBotMessage(`<strong>AI Insights:</strong><br>${llmText}`);
-          } catch (err) {
-            console.error('LLM request failed:', err);
-            addBotMessage('❌ Failed to retrieve AI insights from the model.');
-          }
-        }, 1000);
+  // Replace this URL with your actual ML model’s web interface
+        const mlModelUrl = `https://agri-ai-web-app.onrender.com/?${queryString}`;
+
+  // Optional: show message before redirect
+        addBotMessage("Redirecting you to the detailed ML model insights page...");
+        speakMessage("Redirecting you to the insights page.", currentLanguage.lang);
+
+  // Redirect after 2 seconds
+        setTimeout(() => {
+          window.location.href = mlModelUrl;
+        }, 2000);
+
         return;
+
     }
 
     addBotMessage(nextMessage);
     speakMessage(nextMessage, currentLanguage.lang);
   }, 500);
 }
+
+try {
+  const mlResponse = await fetch('https://agri-ai-web-app.onrender.com/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(collectedData)
+  });
+
+  const mlResult = await mlResponse.json();
+
+  // Display result
+  addBotMessage(`<strong>ML Model Output:</strong><br>${JSON.stringify(mlResult, null, 2)}`);
+} catch (err) {
+  console.error('ML request failed:', err);
+  addBotMessage('❌ Failed to connect to ML model.');
+}
+
 
 
 if ('speechSynthesis' in window) {
