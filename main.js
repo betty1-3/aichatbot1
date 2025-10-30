@@ -294,22 +294,35 @@ async function handleUserResponse(response) {
         console.log('=== Final Collected Data ===');
         console.log(JSON.stringify(collectedData, null, 2));
 
-  // Convert collected data to query params
-        const queryString = new URLSearchParams(collectedData).toString();
+        try {
+    // Send data to ML model
+          const mlResponse = await fetch('https://agri-ai-web-app.onrender.com/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(collectedData)
+          });
 
-  // Replace this URL with your actual ML model’s web interface
+          const mlResult = await mlResponse.json();
+
+          addBotMessage(`<strong>ML Model Output:</strong><br>${JSON.stringify(mlResult, null, 2)}`);
+          } catch (err) {
+          console.error('ML request failed:', err);
+          addBotMessage('❌ Failed to connect to ML model.');
+        }
+
+  // Redirect to ML model UI
+        const queryString = new URLSearchParams(collectedData).toString();
         const mlModelUrl = `https://agri-ai-web-app.onrender.com/?${queryString}`;
 
-  // Optional: show message before redirect
         addBotMessage("Redirecting you to the detailed ML model insights page...");
         speakMessage("Redirecting you to the insights page.", currentLanguage.lang);
 
-  // Redirect after 2 seconds
         setTimeout(() => {
           window.location.href = mlModelUrl;
         }, 2000);
 
         return;
+
 
     }
 
@@ -318,23 +331,7 @@ async function handleUserResponse(response) {
   }, 500);
 }
 
-try {
-  const mlResponse = await fetch('https://agri-ai-web-app.onrender.com/', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(collectedData)
-  });
 
-  const mlResult = await mlResponse.json();
-
-  // Display result
-  addBotMessage(`<strong>ML Model Output:</strong><br>${JSON.stringify(mlResult, null, 2)}`);
-} catch (err) {
-  console.error('ML request failed:', err);
-  addBotMessage('❌ Failed to connect to ML model.');
-}
 
 
 
